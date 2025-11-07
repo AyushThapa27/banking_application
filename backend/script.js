@@ -286,6 +286,77 @@ app.post("/api/transactions/create", async (req, res) => {
   }
 });
 
+// ✅ GET Single User Profile
+app.get("/api/users/:id", (req, res) => {
+  const userId = req.params.id;
+
+  const q = `
+    SELECT u.userId, u.name, u.email, u.phone, u.address, u.role, u.status,
+           u.createdAt, u.updateAt,
+           a.accountId, a.accountNumber, a.accountType, a.balance
+    FROM users u
+    LEFT JOIN accounts a ON u.userId = a.userId
+    WHERE u.userId = ?
+  `;
+
+  pool.query(q, [userId], (err, result) => {
+    if (err) {
+      console.error("❌ Error fetching user:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    if (!result.length) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ user: result[0] });
+  });
+});
+
+// ✅ TOGGLE USER STATUS (Active/Inactive)
+app.patch("/api/users/:id/status", (req, res) => {
+  const userId = req.params.id;
+
+  const q = `
+    UPDATE users
+    SET status = CASE WHEN status = 'active' THEN 'inactive' ELSE 'active' END
+    WHERE userId = ?
+  `;
+
+  pool.query(q, [userId], (err, result) => {
+    if (err) {
+      console.error("❌ Error updating status:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    res.json({ message: "User status updated successfully" });
+  });
+});
+
+//show user transactions
+app.get("/api/transactions/:accountId", async (req, res) => {
+  const { accountId } = req.params;
+
+  try {
+    const q = `
+      SELECT t.transactionId, t.type, t.amount, t.description, t.createdAt,
+             sender.accountNumber AS fromAccountNumber,
+             receiver.accountNumber AS toAccountNumber
+      FROM transactions t
+      LEFT JOIN accounts sender ON t.fromAccountId = sender.accountId
+      LEFT JOIN accounts receiver ON t.toAccountId = receiver.accountId
+      WHERE t.fromAccountId = ? OR t.toAccountId = ?
+      ORDER BY t.createdAt DESC
+    `;
+
+    const [rows] = await pool.promise().query(q, [accountId, accountId]);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Database query error" });
+  }
+});
+
 // ✅ Default route
 app.use("/", (req, res) => {
   res.send("working fine");
